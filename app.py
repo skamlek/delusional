@@ -106,38 +106,60 @@ class TronSweepBot:
                     account_info = tron.get_account(TARGET_ACCOUNT)
                     active_permissions = account_info.get('active_permission', [])
                     
+                    logger.info(f"Found {len(active_permissions)} active permissions for {TARGET_ACCOUNT}")
+                    
                     # Look for the specified permission ID
                     permission_found = False
                     for perm in active_permissions:
-                        if perm.get('id') == PERMISSION_ID:
+                        perm_id = perm.get('id')
+                        logger.info(f"Checking permission ID: {perm_id}")
+                        
+                        if perm_id == PERMISSION_ID:
                             permission_found = True
-                            # Check if bot's public key is in the permission
                             keys = perm.get('keys', [])
-                            bot_pubkey = self.bot_key.public_key.hex()
+                            logger.info(f"Permission {PERMISSION_ID} found with {len(keys)} keys")
                             
-                            for key_info in keys:
-                                if key_info.get('address') == self.bot_address:
-                                    logger.info(f"Bot key found in permission {PERMISSION_ID} for {TARGET_ACCOUNT}")
-                                    return
+                            # Check if bot's address is in the permission keys
+                            for i, key_info in enumerate(keys):
+                                key_address = key_info.get('address')
+                                logger.info(f"Key {i}: {key_address}")
+                                logger.info(f"Bot address: {self.bot_address}")
+                                
+                                # FIXED: Compare base58 addresses directly
+                                if key_address == self.bot_address:
+                                    logger.info(f"✅ Bot key found in permission {PERMISSION_ID} for {TARGET_ACCOUNT}")
+                                    return  # SUCCESS - exit function here
                             
-                            logger.warning(f"Bot key not found in permission {PERMISSION_ID} keys")
-                            break
+                            # If we get here, bot key was not found in this permission
+                            logger.error(f"❌ Bot address {self.bot_address} not found in permission {PERMISSION_ID} keys")
+                            raise ValueError(f"Bot not authorized for permission {PERMISSION_ID}")
                     
+                    # If we get here, the permission ID doesn't exist
                     if not permission_found:
-                        logger.error(f"Permission {PERMISSION_ID} not found for {TARGET_ACCOUNT}")
+                        logger.error(f"❌ Permission {PERMISSION_ID} not found for {TARGET_ACCOUNT}")
+                        available_perms = [p.get('id') for p in active_permissions]
+                        logger.error(f"Available permission IDs: {available_perms}")
                         raise ValueError(f"Permission {PERMISSION_ID} does not exist")
                         
                 except Exception as api_error:
-                    logger.warning(f"Could not verify permissions via API: {api_error}")
-            
-            # Fallback warning for cases where we can't verify
-            logger.warning(f"Using custom permission {PERMISSION_ID} for {TARGET_ACCOUNT}")
-            logger.warning("Could not verify bot authorization - ensure the bot's public key is authorized")
-            logger.warning(f"Bot public key: {self.bot_key.public_key.hex()}")
+                    logger.error(f"❌ API error during permission verification: {api_error}")
+                    raise ValueError(f"Cannot verify permissions: {api_error}")
+            else:
+                logger.error("❌ Cannot verify permissions - Tron client not available or TARGET_ACCOUNT missing")
+                raise ValueError("Cannot verify account permissions - missing client or account")
             
         except Exception as e:
-            logger.error(f"Error validating account permissions: {e}")
-            raise ValueError(f"Cannot validate account control: {e}")
+            logger.error(f"❌ Error validating account permissions: {e}")
+            raise ValueError(f"Permission validation failed: {e}")
+
+    def _validate_account_permissions_skip(self):
+        """Skip on-chain permission check - assume configuration is correct"""
+        if TARGET_ACCOUNT == self.bot_address:
+            logger.info("✅ Bot owns the target account - direct control")
+        else:
+            logger.warning("⚠️ Skipping on-chain permission check. Assuming configuration is correct.")
+            logger.warning(f"⚠️ Using permission {PERMISSION_ID} for {TARGET_ACCOUNT}")
+            logger.warning(f"⚠️ Bot address: {self.bot_address}")
 
     def authenticate_webhook(self, auth_header):
         """Authenticate incoming webhook request"""
