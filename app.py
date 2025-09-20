@@ -116,7 +116,7 @@ class TronSweepBot:
                             bot_pubkey = self.bot_key.public_key.hex()
                             
                             for key_info in keys:
-                                if key_info.get('address') == bot_pubkey:
+                                if key_info.get('address') == self.bot_address:
                                     logger.info(f"Bot key found in permission {PERMISSION_ID} for {TARGET_ACCOUNT}")
                                     return
                             
